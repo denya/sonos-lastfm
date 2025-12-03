@@ -56,7 +56,7 @@ pip install keyring keyrings.alt
 
 1. Run the interactive setup:
    ```bash
-   sonos-lastfm --setup
+   sonos-lastfm setup
    ```
    If you have a keyring backend installed, credentials will be stored securely.
    Otherwise, you'll be prompted to store them in your environment or .env file.
