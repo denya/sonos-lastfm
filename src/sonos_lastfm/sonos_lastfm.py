@@ -3,6 +3,8 @@
 
 """Sonos to Last.fm scrobbler using uv for dependency management."""
 
+from __future__ import annotations
+
 import json
 import logging
 import time
@@ -275,7 +277,7 @@ class SonosScrobbler:
             raw_duration: str = track_info.get("duration", "0:00")
             if not raw_duration or "NOT_IMPLEMENTED" in raw_duration:
                 logger.debug("Skipping track with no duration info: %s", track_info.get("title"))
-                return
+                return {}
             duration_parts: list[str] = raw_duration.split(":")
             if len(duration_parts) == TIME_FORMAT_HMS:  # "H:MM:SS"
                 duration: int = (
@@ -290,7 +292,7 @@ class SonosScrobbler:
             raw_position: str = track_info.get("position", "0:00")
             if not raw_position or "NOT_IMPLEMENTED" in raw_position:
                 logger.debug("Skipping track with no position info: %s", track_info.get("title"))
-                return
+                return {}
             position_parts: list[str] = raw_position.split(":")
             if len(position_parts) == TIME_FORMAT_HMS:  # "H:MM:SS"
                 position: int = (
