@@ -1,25 +1,43 @@
+# Copyright (c) 2025 Denis Moskalets
+# Licensed under the MIT License.
+
 """Command line interface for Sonos Last.fm scrobbler."""
 
+from __future__ import annotations
+
 import os
+import traceback
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Annotated, Literal
 
 import pylast  # type: ignore[import-untyped]
 import rich
 import typer
 from rich.console import Console
-from rich.table import Table
 from rich.prompt import Confirm, Prompt
+from rich.table import Table
+
+from .sonos_lastfm import SonosScrobbler
 
 # Make keyring truly optional
+KeyringError: type[Exception] = Exception
 try:
     import keyring
-
-    HAS_KEYRING = True
-except Exception as e:
+except ImportError as exc:
+    keyring = None  # type: ignore[assignment]
     HAS_KEYRING = False
-    KEYRING_ERROR = str(e)
+    KEYRING_ERROR = str(exc)
+else:
+    HAS_KEYRING = True
+    KEYRING_ERROR = ""
+    try:
+        from keyring.errors import KeyringError as _KeyringError
+    except ImportError:
+        pass
+    else:
+        KeyringError = _KeyringError
 
 # Create Typer app instance
 app = typer.Typer(
@@ -35,7 +53,7 @@ CONFIG_DIR = Path.home() / ".sonos_lastfm"
 CREDENTIAL_KEYS = ["username", "password", "api_key", "api_secret"]
 
 # Storage options
-StorageType = Literal["keyring", "env_file"]
+StorageType = Literal["env_file", "keyring"]
 
 # Ensure config directory exists
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -44,21 +62,26 @@ CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 CREDENTIALS_FILE = CONFIG_DIR / ".env"
 
 
-def save_to_env_file(credentials: dict[str, str]) -> None:
+def save_to_env_file(credentials: dict[str, str], merge: bool = True) -> None:
     """Save credentials to .env file in config directory.
 
     Args:
         credentials: Dictionary of credentials to save
+        merge: Whether to merge with existing file content before writing
     """
     try:
-        with CREDENTIALS_FILE.open("w") as f:
-            for key, value in credentials.items():
+        merged_credentials = load_from_env_file() if merge else {}
+        merged_credentials.update(credentials)
+        with CREDENTIALS_FILE.open("w", encoding="utf-8") as f:
+            for key, value in merged_credentials.items():
                 f.write(f"LASTFM_{key.upper()}={value}\n")
         rich.print(f"[green]✓[/green] Credentials saved to {CREDENTIALS_FILE}")
-    except Exception as e:
-        rich.print(
-            f"[red]Error:[/red] Could not save credentials to {CREDENTIALS_FILE}: {e}"
+    except OSError as exc:
+        error_message = (
+            "[red]Error:[/red] Could not save credentials to "
+            f"{CREDENTIALS_FILE}: {exc}"
         )
+        rich.print(error_message)
 
 
 def load_from_env_file() -> dict[str, str]:
@@ -67,21 +90,25 @@ def load_from_env_file() -> dict[str, str]:
     Returns:
         Dictionary of credentials
     """
-    credentials = {}
+    credentials: dict[str, str] = {}
+    if not CREDENTIALS_FILE.exists():
+        return credentials
+
     try:
-        if CREDENTIALS_FILE.exists():
-            with CREDENTIALS_FILE.open() as f:
-                for line in f:
-                    if "=" in line:
-                        key, value = line.strip().split("=", 1)
-                        if key.startswith("LASTFM_"):
-                            credentials[key[7:].lower()] = value
-    except Exception:
-        pass
+        with CREDENTIALS_FILE.open(encoding="utf-8") as file_handle:
+            for line in file_handle:
+                if "=" not in line:
+                    continue
+                env_key, value = line.strip().split("=", 1)
+                if env_key.startswith("LASTFM_"):
+                    credentials[env_key[7:].lower()] = value
+    except OSError:
+        return credentials
+
     return credentials
 
 
-def get_stored_credential(key: str) -> Optional[str]:
+def get_stored_credential(key: str) -> str | None:
     """Get a credential from available storage methods.
 
     Args:
@@ -96,11 +123,11 @@ def get_stored_credential(key: str) -> Optional[str]:
         return value
 
     # Then try keyring if available
-    if HAS_KEYRING:
+    if HAS_KEYRING and keyring:
         try:
             if value := keyring.get_password(APP_NAME, key):
                 return value
-        except Exception:
+        except KeyringError:
             pass
 
     # Finally try config env file
@@ -108,7 +135,7 @@ def get_stored_credential(key: str) -> Optional[str]:
 
 
 def store_credential(
-    key: str, value: str, storage_type: Optional[StorageType] = None
+    key: str, value: str, storage_type: StorageType | None = None,
 ) -> None:
     """Store a credential using the specified or available storage method.
 
@@ -116,6 +143,9 @@ def store_credential(
         key: The key to store
         value: The value to store
         storage_type: Where to store the credential (if None, will use available method)
+
+    Raises:
+        typer.Exit: If keyring storage is requested but unavailable in the environment.
     """
     # If storage type is explicitly specified, use that
     if storage_type:
@@ -124,18 +154,25 @@ def store_credential(
             raise typer.Exit(1)
 
         if storage_type == "keyring":
+            if not keyring:
+                rich.print(
+                    "[red]Error:[/red] Keyring support is unavailable in this "
+                    "environment.",
+                )
+                raise typer.Exit(1)
             keyring.set_password(APP_NAME, key, value)
         else:
             save_to_env_file({key: value})
         return
 
     # Otherwise try available methods in order
-    if HAS_KEYRING:
+    if HAS_KEYRING and keyring:
         try:
             keyring.set_password(APP_NAME, key, value)
+        except KeyringError as exc:
+            rich.print(f"[yellow]Warning:[/yellow] Could not store in keyring: {exc}")
+        else:
             return
-        except Exception as e:
-            rich.print(f"[yellow]Warning:[/yellow] Could not store in keyring: {e}")
 
     # Fall back to env file
     save_to_env_file({key: value})
@@ -147,11 +184,9 @@ def delete_credential(key: str) -> None:
     Args:
         key: The key to delete
     """
-    if HAS_KEYRING:
-        try:
+    if HAS_KEYRING and keyring:
+        with suppress(KeyringError):
             keyring.delete_password(APP_NAME, key)
-        except Exception:
-            pass
 
     # Remove from env file
     if CREDENTIALS_FILE.exists():
@@ -159,13 +194,17 @@ def delete_credential(key: str) -> None:
             credentials = load_from_env_file()
             if key in credentials:
                 del credentials[key]
-                save_to_env_file(credentials)
-        except Exception:
+                save_to_env_file(credentials, merge=False)
+        except OSError:
             pass
 
 
 def interactive_setup() -> None:
-    """Run interactive setup to configure credentials."""
+    """Run interactive setup to configure credentials.
+
+    Raises:
+        typer.Exit: If no credential storage method is available or persistence fails.
+    """
     rich.print("\n[bold]Welcome to Sonos Last.fm Scrobbler Setup![/bold]\n")
 
     # Explain storage options
@@ -176,8 +215,8 @@ def interactive_setup() -> None:
         options.append(("keyring", "System keyring (most secure)"))
     options.append(("env_file", f"Config file ({CREDENTIALS_FILE})"))
 
-    for i, (key, desc) in enumerate(options, 1):
-        rich.print(f"{i}. {desc}")
+    for index, (_storage_key, desc) in enumerate(options, 1):
+        rich.print(f"{index}. {desc}")
 
     # Get storage preference
     if options:
@@ -208,9 +247,9 @@ def interactive_setup() -> None:
             store_credential(key, value, storage_type)
 
         rich.print(f"\n[green]✓[/green] Credentials stored using {storage_type}!")
-    except Exception as e:
-        rich.print(f"\n[red]Error:[/red] Failed to store credentials: {e}")
-        raise typer.Exit(1)
+    except (KeyringError, OSError) as exc:
+        rich.print(f"\n[red]Error:[/red] Failed to store credentials: {exc}")
+        raise typer.Exit(1) from exc
 
     # Show account info after setup
     rich.print("\nTesting connection and showing account information:")
@@ -219,7 +258,11 @@ def interactive_setup() -> None:
 
 @app.command(name="info")
 def show_account_info() -> None:
-    """Show Last.fm account information and your recent scrobbles."""
+    """Show Last.fm account information and your recent scrobbles.
+
+    Raises:
+        typer.Exit: If the Last.fm network cannot be initialized or API calls fail.
+    """
     console = Console()
 
     with console.status("Connecting to Last.fm...") as status:
@@ -250,13 +293,13 @@ def show_account_info() -> None:
             user_table.add_row("Username", user.get_name())
             user_table.add_row("Total Scrobbles", str(playcount))
             user_table.add_row(
-                "Registered Since", registered.strftime("%Y-%m-%d %H:%M:%S UTC")
+                "Registered Since", registered.strftime("%Y-%m-%d %H:%M:%S UTC"),
             )
 
             # Create recent tracks table
             if recent_tracks:
                 tracks_table = Table(
-                    title=f"Last {len(recent_tracks)} Scrobbled Tracks"
+                    title=f"Last {len(recent_tracks)} Scrobbled Tracks",
                 )
                 tracks_table.add_column("#", style="dim")
                 tracks_table.add_column("Artist", style="cyan")
@@ -266,7 +309,7 @@ def show_account_info() -> None:
 
                 for idx, track in enumerate(recent_tracks, 1):
                     scrobbled_at = datetime.fromtimestamp(
-                        int(track.timestamp), tz=timezone.utc
+                        int(track.timestamp), tz=timezone.utc,
                     )
 
                     tracks_table.add_row(
@@ -283,16 +326,14 @@ def show_account_info() -> None:
             if recent_tracks:
                 console.print("\n", tracks_table)
 
-        except pylast.WSError as e:
-            console.print(f"\n[red]Error:[/red] Last.fm API error: {e}")
-            raise typer.Exit(1)
-        except Exception as e:
-            console.print(f"\n[red]Error:[/red] Unexpected error: {str(e)}")
+        except pylast.PylastError as exc:
+            console.print(f"\n[red]Error:[/red] Last.fm API error: {exc}")
+            raise typer.Exit(1) from exc
+        except (OSError, RuntimeError, ValueError) as exc:
+            console.print(f"\n[red]Error:[/red] Unexpected error: {exc}")
             console.print("[dim]Debug: Full error details:[/dim]")
-            import traceback
-
             console.print(f"[dim]{traceback.format_exc()}[/dim]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from exc
 
 
 @app.command(name="show")
@@ -304,14 +345,11 @@ def show_credentials() -> None:
     table.add_column("Key", style="cyan")
     table.add_column("Value", style="green")
 
+    sensitive_keys = {"password", "api_secret"}
     for key in CREDENTIAL_KEYS:
         value = get_stored_credential(key)
         if value:
-            # Mask sensitive values
-            if key in ["password", "api_secret"]:
-                display_value = "********"
-            else:
-                display_value = value
+            display_value = "********" if key in sensitive_keys else value
             table.add_row(key, display_value)
         else:
             table.add_row(key, "[red]not set[/red]")
@@ -345,7 +383,7 @@ def setup_credentials() -> None:
 
     if has_credentials:
         if not Confirm.ask(
-            "\nExisting credentials found. Do you want to reconfigure them?"
+            "\nExisting credentials found. Do you want to reconfigure them?",
         ):
             rich.print("Operation cancelled.")
             return
@@ -361,29 +399,37 @@ def setup_credentials() -> None:
 
 
 @app.command()
-def run(
-    username: Optional[str] = typer.Option(
+def run(  # noqa: PLR0913, PLR0917
+    setup: Annotated[
+        bool,
+        typer.Option(
+            "--setup",
+            help="Run interactive setup before starting",
+            is_flag=True,
+        ),
+    ] = False,
+    username: str | None = typer.Option(
         None,
         "--username",
         "-u",
         help="Last.fm username",
         envvar="LASTFM_USERNAME",
     ),
-    password: Optional[str] = typer.Option(
+    password: str | None = typer.Option(
         None,
         "--password",
         "-p",
         help="Last.fm password",
         envvar="LASTFM_PASSWORD",
     ),
-    api_key: Optional[str] = typer.Option(
+    api_key: str | None = typer.Option(
         None,
         "--api-key",
         "-k",
         help="Last.fm API key",
         envvar="LASTFM_API_KEY",
     ),
-    api_secret: Optional[str] = typer.Option(
+    api_secret: str | None = typer.Option(
         None,
         "--api-secret",
         "-s",
@@ -413,26 +459,24 @@ def run(
         min=0,
         max=100,
     ),
-    setup: bool = typer.Option(
-        False,
-        "--setup",
-        help="Run interactive setup before starting",
-    ),
 ) -> None:
     """Start the Sonos scrobbler (requires credentials).
 
     Monitors your Sonos speakers and scrobbles tracks to Last.fm. Can use stored
     credentials or accept them via command line options or environment variables.
+
+    Raises:
+        typer.Exit: If required credentials are missing after prompting.
     """
     if setup:
         interactive_setup()
         return
 
     # Get credentials from various sources
-    final_username = get_stored_credential("username")
-    final_password = get_stored_credential("password")
-    final_api_key = get_stored_credential("api_key")
-    final_api_secret = get_stored_credential("api_secret")
+    final_username = username or get_stored_credential("username")
+    final_password = password or get_stored_credential("password")
+    final_api_key = api_key or get_stored_credential("api_key")
+    final_api_secret = api_secret or get_stored_credential("api_secret")
 
     # Check if we have all required credentials
     missing = []
@@ -447,7 +491,7 @@ def run(
 
     if missing:
         rich.print(
-            f"\n[red]Error:[/red] Missing required credentials: {', '.join(missing)}"
+            f"\n[red]Error:[/red] Missing required credentials: {', '.join(missing)}",
         )
         if Confirm.ask("\nWould you like to run the setup now?"):
             interactive_setup()
@@ -463,15 +507,12 @@ def run(
     os.environ["SPEAKER_REDISCOVERY_INTERVAL"] = str(rediscovery_interval)
     os.environ["SCROBBLE_THRESHOLD_PERCENT"] = str(threshold)
 
-    # Import SonosScrobbler only when needed
-    from .sonos_lastfm import SonosScrobbler
-
     # Run the scrobbler
     scrobbler = SonosScrobbler()
     scrobbler.run()
 
 
-def get_lastfm_network() -> Optional[pylast.LastFMNetwork]:
+def get_lastfm_network() -> pylast.LastFMNetwork | None:
     """Initialize Last.fm network with stored credentials.
 
     Returns:
@@ -484,7 +525,8 @@ def get_lastfm_network() -> Optional[pylast.LastFMNetwork]:
 
     if not all([username, password, api_key, api_secret]):
         rich.print(
-            "[red]Error:[/red] Missing credentials. Please run 'sonos-lastfm setup' to configure."
+            "[red]Error:[/red] Missing credentials. Please run 'sonos-lastfm setup' "
+            "to configure.",
         )
         return None
 
@@ -495,8 +537,8 @@ def get_lastfm_network() -> Optional[pylast.LastFMNetwork]:
             username=username,
             password_hash=pylast.md5(password),
         )
-    except Exception as e:
-        rich.print(f"[red]Error:[/red] Failed to initialize Last.fm network: {e}")
+    except pylast.PylastError as exc:
+        rich.print(f"[red]Error:[/red] Failed to initialize Last.fm network: {exc}")
         return None
 
 
@@ -511,7 +553,11 @@ def show_recent_tracks(
         max=50,
     ),
 ) -> None:
-    """Show recently scrobbled tracks."""
+    """Show recently scrobbled tracks.
+
+    Raises:
+        typer.Exit: If the Last.fm network is unavailable or API calls fail.
+    """
     console = Console()
 
     with console.status("Connecting to Last.fm...") as status:
@@ -541,7 +587,7 @@ def show_recent_tracks(
             status.update("Processing track information...")
             for idx, track in enumerate(recent_tracks, 1):
                 scrobbled_at = datetime.fromtimestamp(
-                    int(track.timestamp), tz=timezone.utc
+                    int(track.timestamp), tz=timezone.utc,
                 )
 
                 tracks_table.add_row(
@@ -554,16 +600,14 @@ def show_recent_tracks(
 
             console.print(tracks_table)
 
-        except pylast.WSError as e:
-            console.print(f"\n[red]Error:[/red] Last.fm API error: {e}")
-            raise typer.Exit(1)
-        except Exception as e:
-            console.print(f"\n[red]Error:[/red] Unexpected error: {str(e)}")
+        except pylast.PylastError as exc:
+            console.print(f"\n[red]Error:[/red] Last.fm API error: {exc}")
+            raise typer.Exit(1) from exc
+        except (OSError, RuntimeError, ValueError) as exc:
+            console.print(f"\n[red]Error:[/red] Unexpected error: {exc}")
             console.print("[dim]Debug: Full error details:[/dim]")
-            import traceback
-
             console.print(f"[dim]{traceback.format_exc()}[/dim]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from exc
 
 
 def main() -> None:

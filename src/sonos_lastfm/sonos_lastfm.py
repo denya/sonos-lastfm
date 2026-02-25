@@ -1,18 +1,19 @@
-#!/usr/bin/env python3
+# Copyright (c) 2025 Denis Moskalets
+# Licensed under the MIT License.
+
 """Sonos to Last.fm scrobbler using uv for dependency management."""
 
 import json
 import logging
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Final, cast, TypedDict
-
-if True:  # type checking block
-    from soco import SoCo  # type: ignore[import-untyped]
+from typing import Any, Final, TypedDict, cast
 
 import pylast  # type: ignore[import-untyped]
 import soco  # type: ignore[import-untyped]
+from soco import SoCo  # type: ignore[import-untyped]
+from soco import exceptions as soco_exceptions  # type: ignore[import-untyped]
 
 from .config import get_config
 from .utils import custom_print, logger, update_all_progress_displays
@@ -71,6 +72,8 @@ CURRENTLY_PLAYING_FILE: Final[Path] = DATA_DIR / "currently_playing.json"
 
 
 class TransportInfo(TypedDict):
+    """Transport metadata returned by Sonos devices."""
+
     current_transport_state: str
     current_transport_status: str
     current_speed: str
@@ -97,11 +100,11 @@ class SonosScrobbler:
         self.network: Final[pylast.LastFMNetwork] = pylast.LastFMNetwork(
             api_key=assert_not_none(config["LASTFM_API_KEY"], "LASTFM_API_KEY"),
             api_secret=assert_not_none(
-                config["LASTFM_API_SECRET"], "LASTFM_API_SECRET"
+                config["LASTFM_API_SECRET"], "LASTFM_API_SECRET",
             ),
             username=assert_not_none(config["LASTFM_USERNAME"], "LASTFM_USERNAME"),
             password_hash=pylast.md5(
-                assert_not_none(config["LASTFM_PASSWORD"], "LASTFM_PASSWORD")
+                assert_not_none(config["LASTFM_PASSWORD"], "LASTFM_PASSWORD"),
             ),
         )
 
@@ -112,7 +115,7 @@ class SonosScrobbler:
 
         # Load or initialize tracking data
         self.last_scrobbled: dict[str, str] = self.load_json(
-            self.last_scrobbled_file, {}
+            self.last_scrobbled_file, {},
         )
         self.currently_playing: dict[str, dict[str, Any]] = self.load_json(
             self.currently_playing_file,
@@ -124,8 +127,8 @@ class SonosScrobbler:
         self.speakers: list[SoCo] = []
         self.discover_speakers()
 
+    @staticmethod
     def load_json(
-        self,
         file_path: Path,
         default_value: dict[str, Any],
     ) -> dict[str, Any]:
@@ -140,20 +143,21 @@ class SonosScrobbler:
         """
         try:
             if file_path.exists():
-                with file_path.open() as f:
+                with file_path.open(encoding="utf-8") as f:
                     data = json.load(f)
                     if not isinstance(data, dict):
-                        logger.exception(
+                        logger.warning(
                             "Invalid JSON data in %s: not a dictionary",
                             file_path,
                         )
                         return default_value
                     return cast("dict[str, Any]", data)
-        except Exception:
+        except (json.JSONDecodeError, OSError):
             logger.exception("Error loading %s", file_path)
         return default_value
 
-    def save_json(self, file_path: Path, data: dict[str, Any]) -> None:
+    @staticmethod
+    def save_json(file_path: Path, data: dict[str, Any]) -> None:
         """Save data to JSON file.
 
         Args:
@@ -161,15 +165,16 @@ class SonosScrobbler:
             data: Data to save
         """
         try:
-            with file_path.open("w") as f:
+            with file_path.open("w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
-        except Exception:
+        except OSError:
             logger.exception("Error saving %s", file_path)
 
     def discover_speakers(self) -> None:
         """Discover Sonos speakers on the network."""
         try:
-            new_speakers: list[SoCo] = list(soco.discover())
+            discovered_speakers = soco.discover() or []
+            new_speakers: list[SoCo] = list(discovered_speakers)
 
             # Get sets of speaker IDs for comparison
             old_speaker_ids: set[str] = {s.ip_address for s in self.speakers}
@@ -206,7 +211,7 @@ class SonosScrobbler:
             if not self.speakers:
                 custom_print("No Sonos speakers found", "WARNING")
 
-        except Exception:
+        except (soco_exceptions.SoCoException, OSError, TypeError):
             custom_print("Error discovering speakers", "ERROR")
             logger.exception("Error discovering speakers")
             self.speakers = []
@@ -225,7 +230,7 @@ class SonosScrobbler:
             return False
 
         track_id: str = f"{track_info['artist']}-{track_info['title']}"
-        current_time: datetime = datetime.now(UTC)
+        current_time: datetime = datetime.now(timezone.utc)
 
         # Check if track was recently scrobbled
         if track_id in self.last_scrobbled:
@@ -248,7 +253,8 @@ class SonosScrobbler:
 
         return False
 
-    def update_track_info(self, speaker: SoCo) -> dict[str, Any]:
+    @staticmethod
+    def update_track_info(speaker: SoCo) -> dict[str, Any]:
         """Get current track information from a speaker.
 
         Args:
@@ -266,9 +272,11 @@ class SonosScrobbler:
             )
 
             # Parse duration (format "0:04:32" or "4:32")
-            duration_parts: list[str] = track_info.get("duration", "0:00").split(
-                ":",
-            )
+            raw_duration: str = track_info.get("duration", "0:00")
+            if not raw_duration or "NOT_IMPLEMENTED" in raw_duration:
+                logger.debug("Skipping track with no duration info: %s", track_info.get("title"))
+                return
+            duration_parts: list[str] = raw_duration.split(":")
             if len(duration_parts) == TIME_FORMAT_HMS:  # "H:MM:SS"
                 duration: int = (
                     int(duration_parts[0]) * 3600
@@ -279,9 +287,11 @@ class SonosScrobbler:
                 duration = int(duration_parts[0]) * 60 + int(duration_parts[1])
 
             # Parse position (format "0:02:45" or "2:45")
-            position_parts: list[str] = track_info.get("position", "0:00").split(
-                ":",
-            )
+            raw_position: str = track_info.get("position", "0:00")
+            if not raw_position or "NOT_IMPLEMENTED" in raw_position:
+                logger.debug("Skipping track with no position info: %s", track_info.get("title"))
+                return
+            position_parts: list[str] = raw_position.split(":")
             if len(position_parts) == TIME_FORMAT_HMS:  # "H:MM:SS"
                 position: int = (
                     int(position_parts[0]) * 3600
@@ -309,7 +319,7 @@ class SonosScrobbler:
                 "position": position,
                 "state": transport_info.get("current_transport_state"),
             }
-        except Exception:
+        except (soco_exceptions.SoCoException, ValueError, KeyError, TypeError):
             logger.exception("Error getting track info from %s", speaker.player_name)
             return {}
 
@@ -329,18 +339,95 @@ class SonosScrobbler:
 
             # Update last scrobbled time
             track_id: str = f"{track_info['artist']}-{track_info['title']}"
-            self.last_scrobbled[track_id] = datetime.now(UTC).isoformat()
+            self.last_scrobbled[track_id] = datetime.now(timezone.utc).isoformat()
             self.save_json(self.last_scrobbled_file, self.last_scrobbled)
 
             custom_print(f"Scrobbled: {track_info['artist']} - {track_info['title']}")
-        except Exception:
+        except (pylast.PylastError, OSError):
             logger.exception("Error scrobbling track")
             custom_print("Error scrobbling track", "ERROR")
+
+    def _process_speaker(
+        self,
+        speaker: SoCo,
+        display_info: dict[str, dict[str, Any]],
+    ) -> None:
+        """Collect playback information for a single speaker."""
+        speaker_id: str = speaker.ip_address
+        track_info: dict[str, Any] = self.update_track_info(speaker)
+
+        if not track_info:
+            return
+
+        prev_track: dict[str, Any] = self.previous_tracks.get(speaker_id, {})
+        current_track_id: str = (
+            f"{track_info.get('artist', '')}-{track_info.get('title', '')}"
+        )
+        prev_track_id: str = (
+            f"{prev_track.get('artist', '')}-{prev_track.get('title', '')}"
+        )
+
+        if (
+            current_track_id != prev_track_id
+            and track_info.get("artist")
+            and track_info.get("title")
+            and track_info["state"] == "PLAYING"
+        ):
+            custom_print(
+                "Now playing on "
+                f"{speaker.player_name}: "
+                f"{track_info['artist']} - "
+                f"{track_info['title']}",
+            )
+
+        self.previous_tracks[speaker_id] = track_info.copy()
+        self.currently_playing[speaker_id] = track_info
+        self.save_json(self.currently_playing_file, self.currently_playing)
+
+        threshold: int = int(
+            track_info["duration"] * self.scrobble_threshold_percent / 100,
+        )
+        display_info[speaker_id] = {
+            "speaker_name": speaker.player_name,
+            "artist": track_info["artist"],
+            "title": track_info["title"],
+            "position": track_info["position"],
+            "duration": track_info["duration"],
+            "threshold": threshold,
+            "state": track_info["state"],
+        }
+
+        if track_info["state"] == "PLAYING" and self.should_scrobble(
+            track_info,
+            speaker_id,
+        ):
+            self.scrobble_track(track_info)
+
+    def _build_display_info(self) -> dict[str, dict[str, Any]]:
+        """Gather playback information for all known speakers.
+
+        Returns:
+            Mapping of speaker identifiers to their current playback details.
+        """
+        display_info: dict[str, dict[str, Any]] = {}
+
+        for speaker in self.speakers:
+            try:
+                self._process_speaker(speaker, display_info)
+            except (
+                soco_exceptions.SoCoException,
+                OSError,
+                ValueError,
+                KeyError,
+                TypeError,
+            ):
+                logger.exception("Error monitoring %s", speaker.player_name)
+
+        return display_info
 
     def monitor_speakers(self) -> None:
         """Main loop to monitor speakers and scrobble tracks."""
         custom_print("Starting Sonos Last.fm Scrobbler")
-        display_info: dict[str, dict[str, Any]] = {}
         last_discovery_time: float = 0
         try:
             while True:
@@ -353,89 +440,22 @@ class SonosScrobbler:
                     self.discover_speakers()
                     last_discovery_time = current_time
 
-                display_info.clear()  # Reset display info each iteration
+                display_info = self._build_display_info()
 
-                for speaker in self.speakers:
-                    try:
-                        speaker_id: str = speaker.ip_address
-                        track_info: dict[str, Any] = self.update_track_info(speaker)
-
-                        if not track_info:
-                            continue
-
-                        # Check if this is a new track
-                        prev_track: dict[str, Any] = self.previous_tracks.get(
-                            speaker_id,
-                            {},
-                        )
-                        current_track_id: str = (
-                            f"{track_info.get('artist', '')}-"
-                            f"{track_info.get('title', '')}"
-                        )
-                        prev_track_id: str = (
-                            f"{prev_track.get('artist', '')}-"
-                            f"{prev_track.get('title', '')}"
-                        )
-
-                        if (
-                            current_track_id != prev_track_id
-                            and track_info.get("artist")
-                            and track_info.get("title")
-                            and track_info["state"] == "PLAYING"
-                        ):
-                            custom_print(
-                                "Now playing on "
-                                f"{speaker.player_name}: "
-                                f"{track_info['artist']} - "
-                                f"{track_info['title']}",
-                            )
-
-                        # Update previous track info
-                        self.previous_tracks[speaker_id] = track_info.copy()
-
-                        # Update currently playing info
-                        self.currently_playing[speaker_id] = track_info
-                        self.save_json(
-                            self.currently_playing_file, self.currently_playing
-                        )
-
-                        # Prepare display info for this speaker
-                        threshold: int = int(
-                            track_info["duration"]
-                            * self.scrobble_threshold_percent
-                            / 100,
-                        )
-                        display_info[speaker_id] = {
-                            "speaker_name": speaker.player_name,
-                            "artist": track_info["artist"],
-                            "title": track_info["title"],
-                            "position": track_info["position"],
-                            "duration": track_info["duration"],
-                            "threshold": threshold,
-                            "state": track_info["state"],
-                        }
-
-                        # Check if track should be scrobbled (only log scrobble events)
-                        if track_info["state"] == "PLAYING" and self.should_scrobble(
-                            track_info,
-                            speaker_id,
-                        ):
-                            self.scrobble_track(track_info)
-
-                    except Exception:
-                        logger.exception(
-                            "Error monitoring %s",
-                            speaker.player_name,
-                        )
-
-                # Update all progress displays together
                 if display_info:
                     update_all_progress_displays(display_info)
 
                 time.sleep(self.scrobble_interval)
         except KeyboardInterrupt:
             custom_print("\nShutting down...")  # Add newline before shutdown message
-        except Exception:
+        except (
+            soco_exceptions.SoCoException,
+            pylast.PylastError,
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+        ):
             logger.exception("Unexpected error")
             custom_print("Unexpected error", "ERROR")
 
