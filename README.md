@@ -56,14 +56,14 @@ pip install keyring keyrings.alt
 
 1. Run the interactive setup:
    ```bash
-   sonos-lastfm --setup
+   sonos-lastfm setup
    ```
    If you have a keyring backend installed, credentials will be stored securely.
    Otherwise, you'll be prompted to store them in your environment or .env file.
 
 2. Start scrobbling:
    ```bash
-   sonos-lastfm
+   sonos-lastfm run
    ```
 
 ### Command Line Options
@@ -72,22 +72,17 @@ pip install keyring keyrings.alt
 sonos-lastfm [OPTIONS] COMMAND [ARGS]...
 
 Commands:
-  run      Run the Sonos Last.fm scrobbler (default if no command specified)
-  show     Show stored credentials (passwords/secrets masked)
+  info     Show Last.fm account information and your recent scrobbles
+  show     Show stored Last.fm credentials (passwords/secrets masked)
   reset    Remove all stored credentials
-  resetup  Remove existing credentials and run setup again
-  test     Test Last.fm API connectivity and show user information
+  setup    Configure Last.fm credentials (re-runs setup if they already exist)
+  run      Run the Sonos Last.fm scrobbler
+  recent   Show recently scrobbled tracks
+```
 
-Options:
-  -u, --username TEXT            Last.fm username
-  -p, --password TEXT           Last.fm password
-  -k, --api-key TEXT           Last.fm API key
-  -s, --api-secret TEXT        Last.fm API secret
-  -i, --interval INTEGER       Scrobbling check interval in seconds [default: 1]
-  -r, --rediscovery INTEGER    Speaker rediscovery interval in seconds [default: 10]
-  -t, --threshold FLOAT        Scrobble threshold percentage [default: 25.0]
-  --setup                      Run interactive setup
-  --help                       Show this message and exit
+Run options:
+```bash
+sonos-lastfm run --help
 ```
 
 ### Credential Management
@@ -108,22 +103,22 @@ The CLI provides several commands to manage your Last.fm credentials:
 
 3. Reconfigure credentials:
    ```bash
-   sonos-lastfm resetup
+   sonos-lastfm setup
    ```
-   This will remove existing credentials and run the interactive setup again.
+   This will prompt you to remove existing credentials and run the interactive setup again.
 
 ### Testing Last.fm Connection
 
 Before starting the scrobbler, you can test your Last.fm API connection:
 
 ```bash
-sonos-lastfm test
+sonos-lastfm info
 ```
 
 This will:
 1. Test the connection to Last.fm API
 2. Show your user information (username, total scrobbles, registration date)
-3. Display your most recent scrobbled track
+3. Display your most recent scrobbled tracks
 
 Use this command to verify your credentials are working correctly before starting the scrobbler.
 
@@ -133,7 +128,7 @@ You can configure the scrobbler in several ways (in order of precedence):
 
 1. Command line arguments:
    ```bash
-   sonos-lastfm --username "your_username" --api-key "your_api_key"
+   sonos-lastfm run --username "your_username" --api-key "your_api_key"
    ```
 
 2. Environment variables:
@@ -146,16 +141,16 @@ You can configure the scrobbler in several ways (in order of precedence):
    export SPEAKER_REDISCOVERY_INTERVAL=10
    export SCROBBLE_THRESHOLD_PERCENT=25
    
-   sonos-lastfm
+   sonos-lastfm run
    ```
 
 3. Secure keyring storage (recommended if available):
    ```bash
    # Store credentials securely (requires keyring backend)
-   sonos-lastfm --setup
+   sonos-lastfm setup
    
    # Run with stored credentials
-   sonos-lastfm
+   sonos-lastfm run
    ```
 
 4. Environment file (.env):
@@ -203,7 +198,7 @@ The script follows configurable scrobbling rules:
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.14+
 - Sonos speakers on your network
 - Last.fm account and API credentials
   - Get your API credentials at: https://www.last.fm/api/account/create
@@ -218,7 +213,7 @@ The script follows configurable scrobbling rules:
 
 Common issues and solutions:
 - No speakers found: Ensure your computer is on the same network as your Sonos system
-- Scrobbling not working: Check your Last.fm credentials with `sonos-lastfm --setup`
+- Scrobbling not working: Check your Last.fm credentials with `sonos-lastfm setup`
 - Missing scrobbles: Verify that both artist and title information are available for the track
 - Keyring errors: If you see keyring-related errors, either:
   1. Install a keyring backend: `pip install keyring keyrings.alt`
