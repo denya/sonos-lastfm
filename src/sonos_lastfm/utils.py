@@ -1,26 +1,39 @@
+# Copyright (c) 2025 Denis Moskalets
+# Licensed under the MIT License.
+
 """Utility functions for the Sonos Last.fm scrobbler."""
+
+from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
-# Track display state
-_last_line_count: int = 0
-_display_started: bool = False
-_log_lines_since_last_display: int = 0
+# Track display state using a mutable mapping to avoid global statements
+_display_state: dict[str, Any] = {
+    "last_line_count": 0,
+    "display_started": False,
+    "log_lines_since_last_display": 0,
+}
 
 
 class LogLineCounter(logging.Handler):
     """Handler that counts log lines for display management."""
 
+    def __init__(self) -> None:
+        """Initialize the handler with shared display state."""
+        super().__init__()
+        self._state = _display_state
+
     def emit(self, _record: logging.LogRecord) -> None:
         """Process a log record by incrementing the line counter."""
-        global _log_lines_since_last_display
-        _log_lines_since_last_display += 1
+        self._state["log_lines_since_last_display"] += 1
 
 
 # Add our custom handler to the root logger
@@ -47,14 +60,12 @@ def custom_print(message: str, level: str = "INFO") -> None:
     print(formatted_message, flush=True)  # noqa: T201
 
     # Update the line counter
-    global _log_lines_since_last_display
-    _log_lines_since_last_display += 1 + newline_count
+    _display_state["log_lines_since_last_display"] += 1 + newline_count
 
 
 def reset_log_line_counter() -> None:
     """Reset the counter for log lines since last display update."""
-    global _log_lines_since_last_display
-    _log_lines_since_last_display = 0
+    _display_state["log_lines_since_last_display"] = 0
 
 
 def create_progress_bar(
@@ -115,8 +126,6 @@ def update_all_progress_displays(speakers_info: Mapping[str, dict[str, Any]]) ->
             - threshold: int (seconds)
             - state: str
     """
-    global _last_line_count, _display_started, _log_lines_since_last_display
-
     # Prepare the display content
     lines: list[str] = []
 
@@ -146,15 +155,17 @@ def update_all_progress_displays(speakers_info: Mapping[str, dict[str, Any]]) ->
     display_lines: list[str] = ["=== Progress Display ===", *lines]
     total_lines: int = len(display_lines)
 
-    if not _display_started:
+    if not _display_state["display_started"]:
         # First time display
         print("\n".join(display_lines), flush=True)  # noqa: T201
-        _display_started = True
-        _last_line_count = total_lines
+        _display_state["display_started"] = True
+        _display_state["last_line_count"] = total_lines
     else:
         # BEGIN OF IMPORTANT CODE #
-        clean_up_lines: int = _last_line_count
-        total_move_up: int = _log_lines_since_last_display + clean_up_lines
+        clean_up_lines: int = int(_display_state["last_line_count"])
+        total_move_up: int = int(
+            _display_state["log_lines_since_last_display"] + clean_up_lines,
+        )
 
         # Move cursor up by total_move_up lines
         sys.stdout.write(f"\033[{total_move_up}A")
@@ -168,7 +179,7 @@ def update_all_progress_displays(speakers_info: Mapping[str, dict[str, Any]]) ->
 
         # Write new display
         print("\n".join(display_lines), flush=True)  # noqa: T201
-        _last_line_count = total_lines
+        _display_state["last_line_count"] = total_lines
 
     # Reset the log line counter
     reset_log_line_counter()

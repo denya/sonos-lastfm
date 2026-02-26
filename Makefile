@@ -7,10 +7,10 @@ endif
 .PHONY: check-types check-all install-dev clean setup install run versions version help release build-package update-version publish-package verify-package
 
 # Python version to use
-PYTHON_VERSION := 3.11.2
+PYTHON_VERSION := 3.14.2
 
 # Source files
-PYTHON_FILES := sonos_lastfm.py utils.py
+PYTHON_FILES := src/sonos_lastfm
 
 # Install development dependencies
 install-dev:
@@ -18,18 +18,18 @@ install-dev:
 
 # Check types with mypy
 check-types:
-	mypy --strict --python-version=3.12 $(PYTHON_FILES)
+	mypy --strict --python-version=3.14 $(PYTHON_FILES)
 
 # Run ruff type checking and linting
 check-ruff:
-	ruff check --select=ALL --target-version=py312 $(PYTHON_FILES)
+	ruff check --select=ALL --target-version=py314 $(PYTHON_FILES)
 
 # Run all checks
 check-all: check-types check-ruff
 
 # Clean up cache directories and build artifacts
 clean:
-	rm -rf .mypy_cache .ruff_cache __pycache__ */__pycache__ .venv dist build *.egg-info
+	rm -rf .mypy_cache .ruff_cache __pycache__ */__pycache__ dist build *.egg-info
 
 # Setup Python environment
 setup:
