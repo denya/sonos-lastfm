@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sonos-lastfm"
-version = "0.1.7"
+version = "0.1.8"
 description = "Automatically scrobble music playing on your Sonos speakers to Last.fm"
 readme = "README.md"
 authors = [
