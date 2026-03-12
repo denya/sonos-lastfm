@@ -57,7 +57,8 @@ def _load_sonos_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "sonos_lastfm.utils", utils_mod)
 
     spec = importlib.util.spec_from_file_location(
-        "sonos_lastfm.sonos_lastfm", module_path,
+        "sonos_lastfm.sonos_lastfm",
+        module_path,
     )
     assert spec is not None
     assert spec.loader is not None
@@ -67,7 +68,9 @@ def _load_sonos_module(monkeypatch):
     return module
 
 
-def test_update_track_info_returns_empty_dict_when_duration_missing(monkeypatch) -> None:
+def test_update_track_info_returns_empty_dict_when_duration_missing(
+    monkeypatch,
+) -> None:
     """Duration NOT_IMPLEMENTED should produce an empty dict."""
     module = _load_sonos_module(monkeypatch)
 
@@ -91,7 +94,9 @@ def test_update_track_info_returns_empty_dict_when_duration_missing(monkeypatch)
     assert module.SonosScrobbler.update_track_info(FakeSpeaker()) == {}
 
 
-def test_update_track_info_returns_empty_dict_when_position_missing(monkeypatch) -> None:
+def test_update_track_info_returns_empty_dict_when_position_missing(
+    monkeypatch,
+) -> None:
     """Position NOT_IMPLEMENTED should produce an empty dict."""
     module = _load_sonos_module(monkeypatch)
 

@@ -1,11 +1,15 @@
-"""Tests for CLI credential storage behavior."""
+"""Tests for CLI ``run`` command error paths and credential handling."""
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import types
 from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
 
 
 def _load_cli_module(monkeypatch):
@@ -13,12 +17,10 @@ def _load_cli_module(monkeypatch):
     src_root = Path(__file__).resolve().parents[1] / "src" / "sonos_lastfm"
     cli_path = src_root / "cli.py"
 
-    # Create package shell so relative imports resolve without importing __init__.py.
     pkg = types.ModuleType("sonos_lastfm")
     pkg.__path__ = [str(src_root)]
     monkeypatch.setitem(sys.modules, "sonos_lastfm", pkg)
 
-    # Stub runtime dependencies used only by CLI command handlers.
     typer_mod = types.ModuleType("typer")
 
     class DummyTyper:
@@ -107,7 +109,7 @@ def _load_cli_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "pylast", pylast_mod)
 
     sonos_mod = types.ModuleType("sonos_lastfm.sonos_lastfm")
-    sonos_mod.SonosScrobbler = object
+    sonos_mod.SonosScrobbler = MagicMock
     monkeypatch.setitem(sys.modules, "sonos_lastfm.sonos_lastfm", sonos_mod)
 
     spec = importlib.util.spec_from_file_location("sonos_lastfm.cli", cli_path)
@@ -119,70 +121,73 @@ def _load_cli_module(monkeypatch):
     return module
 
 
-def _read_env(path: Path) -> dict[str, str]:
-    """Read LASTFM values from a .env-style file."""
-    loaded: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key.startswith("LASTFM_"):
-            loaded[key[7:].lower()] = value
-    return loaded
-
-
-def test_save_to_env_file_merges_existing_credentials(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """Sequential writes should preserve previously stored credentials."""
+def test_run_missing_all_credentials_raises_exit(monkeypatch) -> None:
+    """No creds set, Confirm.ask returns False -> typer.Exit raised."""
     cli = _load_cli_module(monkeypatch)
-    credentials_file = tmp_path / ".env"
-    monkeypatch.setattr(cli, "CREDENTIALS_FILE", credentials_file)
 
-    cli.save_to_env_file({"username": "alice"})
-    cli.save_to_env_file({"password": "secret"})
-    cli.save_to_env_file({"api_key": "key-1"})
-    cli.save_to_env_file({"api_secret": "sec-1"})
+    # Clear all credential env vars
+    for var in (
+        "LASTFM_USERNAME",
+        "LASTFM_PASSWORD",
+        "LASTFM_API_KEY",
+        "LASTFM_API_SECRET",
+    ):
+        monkeypatch.delenv(var, raising=False)
 
-    assert _read_env(credentials_file) == {
-        "username": "alice",
-        "password": "secret",
-        "api_key": "key-1",
-        "api_secret": "sec-1",
-    }
-
-
-def test_store_credential_env_file_preserves_other_keys(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """store_credential(env_file) should not clobber previous keys."""
-    cli = _load_cli_module(monkeypatch)
-    credentials_file = tmp_path / ".env"
-    monkeypatch.setattr(cli, "CREDENTIALS_FILE", credentials_file)
-
-    cli.store_credential("username", "alice", "env_file")
-    cli.store_credential("password", "secret", "env_file")
-
-    assert _read_env(credentials_file) == {
-        "username": "alice",
-        "password": "secret",
-    }
-
-
-def test_delete_credential_removes_only_selected_key(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """Deleting one key should keep other credentials untouched."""
-    cli = _load_cli_module(monkeypatch)
-    credentials_file = tmp_path / ".env"
-    monkeypatch.setattr(cli, "CREDENTIALS_FILE", credentials_file)
+    # Ensure no stored credentials are found
+    monkeypatch.setattr(cli, "CREDENTIALS_FILE", Path("/nonexistent/.env"))
     monkeypatch.setattr(cli, "HAS_KEYRING", False)
     monkeypatch.setattr(cli, "keyring", None)
 
-    cli.save_to_env_file({"username": "alice", "password": "secret"})
-    cli.delete_credential("password")
+    with pytest.raises(cli.typer.Exit):
+        cli.run(
+            setup=False,
+            daemon=False,
+            username=None,
+            password=None,
+            api_key=None,
+            api_secret=None,
+            scrobble_interval=1,
+            rediscovery_interval=10,
+            threshold=25.0,
+        )
 
-    assert _read_env(credentials_file) == {"username": "alice"}
+
+def test_run_with_all_credentials_sets_env_vars(monkeypatch) -> None:
+    """All 4 creds provided as args -> os.environ is set correctly."""
+    cli = _load_cli_module(monkeypatch)
+
+    # Clear any existing credential env vars
+    for var in (
+        "LASTFM_USERNAME",
+        "LASTFM_PASSWORD",
+        "LASTFM_API_KEY",
+        "LASTFM_API_SECRET",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    # Mock SonosScrobbler to prevent actual network calls
+    mock_scrobbler = MagicMock()
+    monkeypatch.setattr(cli, "SonosScrobbler", lambda: mock_scrobbler)
+
+    cli.run(
+        setup=False,
+        daemon=False,
+        username="testuser",
+        password="testpass",
+        api_key="testkey",
+        api_secret="testsecret",
+        scrobble_interval=5,
+        rediscovery_interval=20,
+        threshold=50.0,
+    )
+
+    assert os.environ["LASTFM_USERNAME"] == "testuser"
+    assert os.environ["LASTFM_PASSWORD"] == "testpass"
+    assert os.environ["LASTFM_API_KEY"] == "testkey"
+    assert os.environ["LASTFM_API_SECRET"] == "testsecret"
+    assert os.environ["SCROBBLE_INTERVAL"] == "5"
+    assert os.environ["SPEAKER_REDISCOVERY_INTERVAL"] == "20"
+    assert os.environ["SCROBBLE_THRESHOLD_PERCENT"] == "50.0"
+
+    mock_scrobbler.run.assert_called_once_with(daemon=False)
