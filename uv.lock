@@ -651,7 +651,7 @@ wheels = [
 
 [[package]]
 name = "sonos-lastfm"
-version = "0.1.9"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "charset-normalizer" },
