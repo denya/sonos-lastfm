@@ -7,6 +7,18 @@
 
 Automatically scrobble what's playing on your Sonos speakers to your Last.fm profile.
 
+## The problem
+
+If you use Last.fm, you know the value of a complete listening history. Some of us have been scrobbling for 10, 15, even 20 years — and that data tells a story.
+
+But Sonos doesn't support Last.fm. There's no native integration, no plugin, no setting to flip. Every song you play on your Sonos speakers is a gap in your scrobbling history.
+
+## The solution
+
+**sonos-lastfm** is a lightweight CLI tool that monitors your local network for Sonos playback and scrobbles every track to Last.fm automatically.
+
+Run it on any always-on device in your home — a Raspberry Pi, a Mac Mini, an old laptop, or any Linux server — and never miss a scrobble again. It works as a background daemon, so once you set it up, you can forget about it.
+
 ## Get started in 2 minutes
 
 ### 1. Install
