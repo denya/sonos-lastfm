@@ -31,7 +31,8 @@ jobs:
         with:
           enable-cache: true
           cache-suffix: ${{ matrix.python-version }}
-      - name: Install system dependencies
+      - name: Install system dependencies (lxml build for Python 3.14)
+        if: matrix.python-version == '3.14'
         run: sudo apt-get update && sudo apt-get install -y libxml2-dev libxslt-dev
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
