@@ -2,9 +2,11 @@
 
 ![sonos lastfm](https://github.com/user-attachments/assets/6c84174d-a927-4801-8800-e2343d1646d7)
 
-Scrobbles music from your Sonos speakers to Last.fm.
+Automatically scrobble what's playing on your Sonos speakers to your Last.fm profile.
 
-## Install
+## Get started in 2 minutes
+
+### 1. Install
 
 ```bash
 pip install sonos-lastfm
@@ -12,29 +14,38 @@ pip install sonos-lastfm
 
 Requires Python 3.10+ and Sonos speakers on the same network.
 
-## Get Last.fm API credentials
+### 2. Get a free Last.fm API key
 
-1. Go to https://www.last.fm/api/account/create
-2. Fill in the form (app name can be anything, e.g. "sonos-scrobbler")
-3. You'll get an **API key** and **API secret**
-4. You also need your Last.fm **username** and **password**
+You need an API key so the app can talk to Last.fm on your behalf. It's free and takes 30 seconds:
 
-## Setup credentials
+1. Open https://www.last.fm/api/account/create
+2. Fill in the form — app name can be anything (e.g. "my sonos scrobbler"), other fields don't matter
+3. Submit — you'll see your **API key** and **Shared secret**. Keep this page open, you'll need both in the next step
 
-Interactive setup (stores in `~/.sonos_lastfm/.env` or system keyring):
+### 3. Run setup
 
 ```bash
 sonos-lastfm setup
 ```
 
-Or pass via environment / `.env` file:
+The setup wizard will ask for four things:
 
+| Credential | What it is |
+|---|---|
+| **Username** | Your Last.fm username (the one you log in with) |
+| **Password** | Your Last.fm account password |
+| **API key** | From step 2 above |
+| **API secret** | The "Shared secret" from step 2 above |
+
+The wizard validates your credentials immediately, so you'll know right away if something's wrong.
+
+### 4. Start scrobbling
+
+```bash
+sonos-lastfm run
 ```
-LASTFM_USERNAME=your_username
-LASTFM_PASSWORD=your_password
-LASTFM_API_KEY=your_api_key
-LASTFM_API_SECRET=your_api_secret
-```
+
+That's it! Play something on your Sonos and it will show up on your Last.fm profile.
 
 ## CLI usage
 

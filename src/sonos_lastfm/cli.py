@@ -231,11 +231,44 @@ def interactive_setup() -> None:
         rich.print("[red]Error:[/red] No storage methods available!")
         raise typer.Exit(1)
 
-    rich.print("\nPlease enter your Last.fm credentials:")
-    username = Prompt.ask("Username")
-    password = Prompt.ask("Password", password=True)
-    api_key = Prompt.ask("API Key")
-    api_secret = Prompt.ask("API Secret", password=True)
+    rich.print("\nPlease enter your Last.fm credentials:\n")
+
+    username = Prompt.ask("[cyan]Username[/cyan] (your Last.fm login)")
+    password = Prompt.ask(
+        "[cyan]Password[/cyan] (your Last.fm account password)", password=True
+    )
+
+    rich.print(
+        "\n[dim]Need an API key? Get one free at:[/dim] "
+        "[link=https://www.last.fm/api/account/create]"
+        "https://www.last.fm/api/account/create[/link]\n"
+    )
+    api_key = Prompt.ask("[cyan]API Key[/cyan]")
+    api_secret = Prompt.ask(
+        '[cyan]API Secret[/cyan] (labeled "Shared secret" on the API page)',
+        password=True,
+    )
+
+    # Validate credentials before saving
+    rich.print("\n[dim]Validating credentials...[/dim]")
+    try:
+        network = pylast.LastFMNetwork(
+            api_key=api_key,
+            api_secret=api_secret,
+            username=username,
+            password_hash=pylast.md5(password),
+        )
+        lastfm_user = network.get_authenticated_user()
+        display_name = lastfm_user.get_name()
+    except pylast.PylastError as exc:
+        rich.print(f"\n[red]✗ Connection failed:[/red] {exc}")
+        rich.print(
+            "[yellow]Tip:[/yellow] Double-check your credentials and try again "
+            "with [bold]sonos-lastfm setup[/bold]."
+        )
+        raise typer.Exit(1) from exc
+
+    rich.print(f"[green]✓[/green] Connected to Last.fm as [bold]{display_name}[/bold]")
 
     # Store credentials using chosen method
     try:
@@ -252,9 +285,10 @@ def interactive_setup() -> None:
         rich.print(f"\n[red]Error:[/red] Failed to store credentials: {exc}")
         raise typer.Exit(1) from exc
 
-    # Show account info after setup
-    rich.print("\nTesting connection and showing account information:")
-    show_account_info()
+    rich.print(
+        "\n[green]You're all set![/green] "
+        "Run [bold]sonos-lastfm run[/bold] to start scrobbling."
+    )
 
 
 @app.command(name="info")
@@ -502,10 +536,18 @@ def run(  # noqa: PLR0913, PLR0917
         missing.append("API secret")
 
     if missing:
-        rich.print(
-            f"\n[red]Error:[/red] Missing required credentials: {', '.join(missing)}",
-        )
-        if Confirm.ask("\nWould you like to run the setup now?"):
+        api_url = "https://www.last.fm/api/account/create"
+        hints = {
+            "username": "your Last.fm login name",
+            "password": "your Last.fm account password",
+            "API key": f"get one free at {api_url}",
+            "API secret": f'labeled "Shared secret" at {api_url}',
+        }
+        rich.print("\n[red]Error:[/red] Missing credentials:\n")
+        for name in missing:
+            rich.print(f"  [red]•[/red] [bold]{name}[/bold] — {hints[name]}")
+        rich.print()
+        if Confirm.ask("Would you like to run the setup now?"):
             interactive_setup()
             return
         raise typer.Exit(1)

@@ -36,6 +36,11 @@ dependencies = [
     "charset-normalizer==3.4.1",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/denya/sonos-lastfm"
 Issues = "https://github.com/denya/sonos-lastfm/issues"
