@@ -3,6 +3,8 @@
 
 """Configuration helpers for Sonos Last.fm scrobbler."""
 
+from __future__ import annotations
+
 import os
 from pathlib import Path
 from typing import Final
@@ -38,11 +40,11 @@ def validate_config() -> list[str] | None:
 def get_config() -> dict[str, object]:
     """Get configuration values, validating them first.
 
-    Raises:
-        ValueError: If required environment variables are missing
-
     Returns:
         A dictionary containing validated configuration settings.
+
+    Raises:
+        ValueError: If required environment variables are missing
     """
     if missing := validate_config():
         missing_vars = ", ".join(missing)

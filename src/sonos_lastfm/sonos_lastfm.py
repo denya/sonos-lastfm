@@ -102,7 +102,8 @@ class SonosScrobbler:
         self.network: Final[pylast.LastFMNetwork] = pylast.LastFMNetwork(
             api_key=assert_not_none(config["LASTFM_API_KEY"], "LASTFM_API_KEY"),
             api_secret=assert_not_none(
-                config["LASTFM_API_SECRET"], "LASTFM_API_SECRET",
+                config["LASTFM_API_SECRET"],
+                "LASTFM_API_SECRET",
             ),
             username=assert_not_none(config["LASTFM_USERNAME"], "LASTFM_USERNAME"),
             password_hash=pylast.md5(
@@ -117,7 +118,8 @@ class SonosScrobbler:
 
         # Load or initialize tracking data
         self.last_scrobbled: dict[str, str] = self.load_json(
-            self.last_scrobbled_file, {},
+            self.last_scrobbled_file,
+            {},
         )
         self.currently_playing: dict[str, dict[str, Any]] = self.load_json(
             self.currently_playing_file,
@@ -276,7 +278,10 @@ class SonosScrobbler:
             # Parse duration (format "0:04:32" or "4:32")
             raw_duration: str = track_info.get("duration", "0:00")
             if not raw_duration or "NOT_IMPLEMENTED" in raw_duration:
-                logger.debug("Skipping track with no duration info: %s", track_info.get("title"))
+                logger.debug(
+                    "Skipping track with no duration info: %s",
+                    track_info.get("title"),
+                )
                 return {}
             duration_parts: list[str] = raw_duration.split(":")
             if len(duration_parts) == TIME_FORMAT_HMS:  # "H:MM:SS"
@@ -291,7 +296,10 @@ class SonosScrobbler:
             # Parse position (format "0:02:45" or "2:45")
             raw_position: str = track_info.get("position", "0:00")
             if not raw_position or "NOT_IMPLEMENTED" in raw_position:
-                logger.debug("Skipping track with no position info: %s", track_info.get("title"))
+                logger.debug(
+                    "Skipping track with no position info: %s",
+                    track_info.get("title"),
+                )
                 return {}
             position_parts: list[str] = raw_position.split(":")
             if len(position_parts) == TIME_FORMAT_HMS:  # "H:MM:SS"
@@ -427,8 +435,12 @@ class SonosScrobbler:
 
         return display_info
 
-    def monitor_speakers(self) -> None:
-        """Main loop to monitor speakers and scrobble tracks."""
+    def monitor_speakers(self, *, daemon: bool = False) -> None:
+        """Main loop to monitor speakers and scrobble tracks.
+
+        Args:
+            daemon: If True, suppress progress display (for systemd/background use).
+        """
         custom_print("Starting Sonos Last.fm Scrobbler")
         last_discovery_time: float = 0
         try:
@@ -444,7 +456,7 @@ class SonosScrobbler:
 
                 display_info = self._build_display_info()
 
-                if display_info:
+                if display_info and not daemon:
                     update_all_progress_displays(display_info)
 
                 time.sleep(self.scrobble_interval)
@@ -461,9 +473,13 @@ class SonosScrobbler:
             logger.exception("Unexpected error")
             custom_print("Unexpected error", "ERROR")
 
-    def run(self) -> None:
-        """Start the scrobbler."""
-        self.monitor_speakers()
+    def run(self, *, daemon: bool = False) -> None:
+        """Start the scrobbler.
+
+        Args:
+            daemon: If True, suppress progress display (for systemd/background use).
+        """
+        self.monitor_speakers(daemon=daemon)
 
 
 if __name__ == "__main__":

@@ -78,8 +78,7 @@ def save_to_env_file(credentials: dict[str, str], merge: bool = True) -> None:
         rich.print(f"[green]✓[/green] Credentials saved to {CREDENTIALS_FILE}")
     except OSError as exc:
         error_message = (
-            "[red]Error:[/red] Could not save credentials to "
-            f"{CREDENTIALS_FILE}: {exc}"
+            f"[red]Error:[/red] Could not save credentials to {CREDENTIALS_FILE}: {exc}"
         )
         rich.print(error_message)
 
@@ -135,7 +134,9 @@ def get_stored_credential(key: str) -> str | None:
 
 
 def store_credential(
-    key: str, value: str, storage_type: StorageType | None = None,
+    key: str,
+    value: str,
+    storage_type: StorageType | None = None,
 ) -> None:
     """Store a credential using the specified or available storage method.
 
@@ -293,7 +294,8 @@ def show_account_info() -> None:
             user_table.add_row("Username", user.get_name())
             user_table.add_row("Total Scrobbles", str(playcount))
             user_table.add_row(
-                "Registered Since", registered.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "Registered Since",
+                registered.strftime("%Y-%m-%d %H:%M:%S UTC"),
             )
 
             # Create recent tracks table
@@ -309,7 +311,8 @@ def show_account_info() -> None:
 
                 for idx, track in enumerate(recent_tracks, 1):
                     scrobbled_at = datetime.fromtimestamp(
-                        int(track.timestamp), tz=timezone.utc,
+                        int(track.timestamp),
+                        tz=timezone.utc,
                     )
 
                     tracks_table.add_row(
@@ -405,6 +408,15 @@ def run(  # noqa: PLR0913, PLR0917
         typer.Option(
             "--setup",
             help="Run interactive setup before starting",
+            is_flag=True,
+        ),
+    ] = False,
+    daemon: Annotated[
+        bool,
+        typer.Option(
+            "--daemon",
+            "-d",
+            help="Daemon mode: suppress progress display, only log state changes",
             is_flag=True,
         ),
     ] = False,
@@ -509,7 +521,7 @@ def run(  # noqa: PLR0913, PLR0917
 
     # Run the scrobbler
     scrobbler = SonosScrobbler()
-    scrobbler.run()
+    scrobbler.run(daemon=daemon)
 
 
 def get_lastfm_network() -> pylast.LastFMNetwork | None:
@@ -587,7 +599,8 @@ def show_recent_tracks(
             status.update("Processing track information...")
             for idx, track in enumerate(recent_tracks, 1):
                 scrobbled_at = datetime.fromtimestamp(
-                    int(track.timestamp), tz=timezone.utc,
+                    int(track.timestamp),
+                    tz=timezone.utc,
                 )
 
                 tracks_table.add_row(

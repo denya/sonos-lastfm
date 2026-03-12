@@ -1,220 +1,89 @@
-# Sonos to Last.fm Scrobbler
+# Sonos Last.fm Scrobbler
 
 ![sonos lastfm](https://github.com/user-attachments/assets/6c84174d-a927-4801-8800-e2343d1646d7)
 
-This script automatically scrobbles music playing on your Sonos speakers to Last.fm.
+Scrobbles music from your Sonos speakers to Last.fm.
 
-## Features
-
-- Automatic Sonos speaker discovery on your network
-- Real-time track monitoring and scrobbling
-- Smart duplicate scrobble prevention
-- Multi-speaker support
-- Local data persistence for tracking scrobble history
-- Secure credential storage using system keyring (when available)
-- Modern CLI interface with interactive setup
-
-## Installation
-
-### Option 1: Install from PyPI (Recommended)
+## Install
 
 ```bash
-# Basic installation
 pip install sonos-lastfm
-
-# Optional: Install keyring backend for secure credential storage
-pip install keyring keyrings.alt
 ```
 
-### Option 2: Local Development Setup
+Requires Python 3.14+ and Sonos speakers on the same network.
 
-1. Install `uv` (Python package installer):
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
+## Get Last.fm API credentials
 
-2. Setup and run using Make commands:
-   ```bash
-   # Setup Python environment with uv
-   make setup
+1. Go to https://www.last.fm/api/account/create
+2. Fill in the form (app name can be anything, e.g. "sonos-scrobbler")
+3. You'll get an **API key** and **API secret**
+4. You also need your Last.fm **username** and **password**
 
-   # Install dependencies
-   make install
+## Setup credentials
 
-   # For development, install additional tools (optional)
-   make install-dev
-
-   # Optional: Install keyring backend for secure credential storage
-   pip install keyring keyrings.alt
-   ```
-
-   Run `make help` to see all available commands.
-
-## Usage
-
-### Quick Start
-
-1. Run the interactive setup:
-   ```bash
-   sonos-lastfm setup
-   ```
-   If you have a keyring backend installed, credentials will be stored securely.
-   Otherwise, you'll be prompted to store them in your environment or .env file.
-
-2. Start scrobbling:
-   ```bash
-   sonos-lastfm run
-   ```
-
-### Command Line Options
+Interactive setup (stores in `~/.sonos_lastfm/.env` or system keyring):
 
 ```bash
-sonos-lastfm [OPTIONS] COMMAND [ARGS]...
-
-Commands:
-  info     Show Last.fm account information and your recent scrobbles
-  show     Show stored Last.fm credentials (passwords/secrets masked)
-  reset    Remove all stored credentials
-  setup    Configure Last.fm credentials (re-runs setup if they already exist)
-  run      Run the Sonos Last.fm scrobbler
-  recent   Show recently scrobbled tracks
+sonos-lastfm setup
 ```
 
-Run options:
-```bash
-sonos-lastfm run --help
+Or pass via environment / `.env` file:
+
+```
+LASTFM_USERNAME=your_username
+LASTFM_PASSWORD=your_password
+LASTFM_API_KEY=your_api_key
+LASTFM_API_SECRET=your_api_secret
 ```
 
-### Credential Management
-
-The CLI provides several commands to manage your Last.fm credentials:
-
-1. Show stored credentials:
-   ```bash
-   sonos-lastfm show
-   ```
-   This will display your stored credentials with sensitive values masked.
-
-2. Reset (remove) all credentials:
-   ```bash
-   sonos-lastfm reset
-   ```
-   This will remove all stored credentials from your system keyring.
-
-3. Reconfigure credentials:
-   ```bash
-   sonos-lastfm setup
-   ```
-   This will prompt you to remove existing credentials and run the interactive setup again.
-
-### Testing Last.fm Connection
-
-Before starting the scrobbler, you can test your Last.fm API connection:
+## CLI usage
 
 ```bash
-sonos-lastfm info
+sonos-lastfm run                # start scrobbling (interactive, with progress bar)
+sonos-lastfm run --daemon       # start scrobbling (no progress display, for services)
+sonos-lastfm run --interval 5   # check every 5s instead of 1s
+sonos-lastfm info               # show account info and recent scrobbles
+sonos-lastfm recent             # show last 10 scrobbled tracks
+sonos-lastfm show               # show stored credentials (masked)
+sonos-lastfm reset              # delete stored credentials
 ```
 
-This will:
-1. Test the connection to Last.fm API
-2. Show your user information (username, total scrobbles, registration date)
-3. Display your most recent scrobbled tracks
+All `run` options: `sonos-lastfm run --help`
 
-Use this command to verify your credentials are working correctly before starting the scrobbler.
+## Run as a systemd service
 
-### Configuration Methods
+Create `~/.config/systemd/user/sonos-lastfm.service`:
 
-You can configure the scrobbler in several ways (in order of precedence):
+```ini
+[Unit]
+Description=Sonos Last.fm Scrobbler
+After=network-online.target
 
-1. Command line arguments:
-   ```bash
-   sonos-lastfm run --username "your_username" --api-key "your_api_key"
-   ```
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/sonos-lastfm run --daemon
+Restart=on-failure
+RestartSec=10
 
-2. Environment variables:
-   ```bash
-   export LASTFM_USERNAME=your_username
-   export LASTFM_PASSWORD=your_password
-   export LASTFM_API_KEY=your_api_key
-   export LASTFM_API_SECRET=your_api_secret
-   export SCROBBLE_INTERVAL=1
-   export SPEAKER_REDISCOVERY_INTERVAL=10
-   export SCROBBLE_THRESHOLD_PERCENT=25
-   
-   sonos-lastfm run
-   ```
+[Install]
+WantedBy=default.target
+```
 
-3. Secure keyring storage (recommended if available):
-   ```bash
-   # Store credentials securely (requires keyring backend)
-   sonos-lastfm setup
-   
-   # Run with stored credentials
-   sonos-lastfm run
-   ```
+Then:
 
-4. Environment file (.env):
-   Create a `.env` file in your working directory:
-   ```bash
-   LASTFM_USERNAME=your_username
-   LASTFM_PASSWORD=your_password
-   LASTFM_API_KEY=your_api_key
-   LASTFM_API_SECRET=your_api_secret
-   ```
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now sonos-lastfm
+journalctl --user -u sonos-lastfm -f   # watch logs
+```
 
-### Docker Setup (Linux Only)
+In daemon mode, only song changes, scrobbles, and errors are logged.
 
-> Note: Docker setup is not recommended on macOS due to network mode limitations affecting Sonos discovery.
+## Scrobble rules
 
-1. Create a `.env` file with your Last.fm credentials:
-   ```bash
-   LASTFM_USERNAME=your_username
-   LASTFM_PASSWORD=your_password
-   LASTFM_API_KEY=your_api_key
-   LASTFM_API_SECRET=your_api_secret
-   ```
+- Track is scrobbled after **25%** played (configurable via `--threshold`) or **4 minutes**, whichever comes first
+- Same track won't be scrobbled again within 30 minutes
 
-2. Run with Docker Compose:
-   ```bash
-   docker-compose up -d
-   ```
+## License
 
-## Scrobbling Rules
-
-The script follows configurable scrobbling rules:
-- A track is scrobbled when either:
-  - Configured percentage of the track has been played (default: 25%, range: 0-100), OR
-  - 4 minutes (240 seconds) of the track have been played
-- For repeated plays of the same track:
-  - Enforces a 30-minute minimum interval between scrobbles of the same track
-  - Prevents duplicate scrobbles during continuous play
-
-## Data Storage
-
-- Credentials are stored securely in your system's keyring
-- Scrobble history and currently playing information is stored in:
-  - `~/.config/sonos-lastfm/last_scrobbled.json`
-  - `~/.config/sonos-lastfm/currently_playing.json`
-
-## Requirements
-
-- Python 3.14+
-- Sonos speakers on your network
-- Last.fm account and API credentials
-  - Get your API credentials at: https://www.last.fm/api/account/create
-- Optional but recommended:
-  - Keyring backend for secure credential storage:
-    ```bash
-    pip install keyring keyrings.alt
-    ```
-  - Without a keyring backend, credentials must be stored in environment variables or .env file
-
-## Troubleshooting
-
-Common issues and solutions:
-- No speakers found: Ensure your computer is on the same network as your Sonos system
-- Scrobbling not working: Check your Last.fm credentials with `sonos-lastfm setup`
-- Missing scrobbles: Verify that both artist and title information are available for the track
-- Keyring errors: If you see keyring-related errors, either:
-  1. Install a keyring backend: `pip install keyring keyrings.alt`
-  2. Use environment variables or .env file for credentials instead
+MIT

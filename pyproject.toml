@@ -4,20 +4,24 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sonos-lastfm"
-version = "0.1.8"
+version = "0.1.9"
 description = "Automatically scrobble music playing on your Sonos speakers to Last.fm"
 readme = "README.md"
 authors = [
     { name = "Denis Moskalets", email = "denya.msk@gmail.com" }
 ]
 license = { text = "MIT" }
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 keywords = ["sonos", "lastfm", "scrobbler", "music"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Multimedia :: Sound/Audio",
 ]
@@ -28,6 +32,8 @@ dependencies = [
     "typer>=0.20.0",
     "rich>=14.2.0",
     "keyring>=25.6.0",
+    "lxml<6",
+    "charset-normalizer==3.4.1",
 ]
 
 [project.urls]
@@ -48,7 +54,7 @@ include = [
 packages = ["src/sonos_lastfm"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.10"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -64,10 +70,10 @@ warn_unreachable = true
 show_error_codes = true
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py310"
 line-length = 88
 lint.select = ["ALL"]
-lint.ignore = ["PLW0603"]
+lint.ignore = ["PLW0603", "FBT001", "FBT002", "PERF203", "COM812"]
 preview = true
 
 [tool.ruff.lint.per-file-ignores]
