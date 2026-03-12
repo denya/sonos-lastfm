@@ -10,7 +10,7 @@ Scrobbles music from your Sonos speakers to Last.fm.
 pip install sonos-lastfm
 ```
 
-Requires Python 3.14+ and Sonos speakers on the same network.
+Requires Python 3.10+ and Sonos speakers on the same network.
 
 ## Get Last.fm API credentials
 
