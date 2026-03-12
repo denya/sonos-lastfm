@@ -1,5 +1,8 @@
 # Sonos Last.fm Scrobbler
 
+[![PyPI](https://img.shields.io/pypi/v/sonos-lastfm)](https://pypi.org/project/sonos-lastfm/)
+[![Python](https://img.shields.io/pypi/pyversions/sonos-lastfm)](https://pypi.org/project/sonos-lastfm/)
+
 ![sonos lastfm](https://github.com/user-attachments/assets/6c84174d-a927-4801-8800-e2343d1646d7)
 
 Automatically scrobble what's playing on your Sonos speakers to your Last.fm profile.
@@ -89,6 +92,28 @@ journalctl --user -u sonos-lastfm -f   # watch logs
 ```
 
 In daemon mode, only song changes, scrobbles, and errors are logged.
+
+## AI-powered setup
+
+Want an AI agent to handle the full setup for you — installing, configuring credentials, and setting up a persistent daemon? Use the included setup skill with any agent that supports [open agent skills](https://github.com/vercel-labs/skills) (Claude Code, Cursor, Windsurf, Codex, etc.).
+
+**Option A** — Install the skill directly (no clone needed):
+
+```bash
+npx skills add denya/sonos-lastfm@setup-sonos-lastfm
+```
+
+Then ask your agent to "set up sonos-lastfm as a daemon."
+
+**Option B** — Clone the repo and use the skill from source:
+
+```bash
+git clone https://github.com/denya/sonos-lastfm.git
+cd sonos-lastfm
+npx skills add ./skills/setup-sonos-lastfm
+```
+
+The skill covers Linux (systemd), macOS (launchd), and Windows (Task Scheduler), guides you through getting Last.fm API keys, and ensures you're always running the latest version from PyPI.
 
 ## Scrobble rules
 
