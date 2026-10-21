@@ -260,7 +260,7 @@ def interactive_setup() -> None:
         )
         lastfm_user = network.get_authenticated_user()
         display_name = lastfm_user.get_name()
-    except pylast.PylastError as exc:
+    except pylast.PyLastError as exc:
         rich.print(f"\n[red]✗ Connection failed:[/red] {exc}")
         rich.print(
             "[yellow]Tip:[/yellow] Double-check your credentials and try again "
@@ -363,7 +363,7 @@ def show_account_info() -> None:
             if recent_tracks:
                 console.print("\n", tracks_table)
 
-        except pylast.PylastError as exc:
+        except pylast.PyLastError as exc:
             console.print(f"\n[red]Error:[/red] Last.fm API error: {exc}")
             raise typer.Exit(1) from exc
         except (OSError, RuntimeError, ValueError) as exc:
@@ -591,7 +591,7 @@ def get_lastfm_network() -> pylast.LastFMNetwork | None:
             username=username,
             password_hash=pylast.md5(password),
         )
-    except pylast.PylastError as exc:
+    except pylast.PyLastError as exc:
         rich.print(f"[red]Error:[/red] Failed to initialize Last.fm network: {exc}")
         return None
 
@@ -655,7 +655,7 @@ def show_recent_tracks(
 
             console.print(tracks_table)
 
-        except pylast.PylastError as exc:
+        except pylast.PyLastError as exc:
             console.print(f"\n[red]Error:[/red] Last.fm API error: {exc}")
             raise typer.Exit(1) from exc
         except (OSError, RuntimeError, ValueError) as exc:

@@ -353,7 +353,7 @@ class SonosScrobbler:
             self.save_json(self.last_scrobbled_file, self.last_scrobbled)
 
             custom_print(f"Scrobbled: {track_info['artist']} - {track_info['title']}")
-        except (pylast.PylastError, OSError):
+        except (pylast.PyLastError, OSError):
             logger.exception("Error scrobbling track")
             custom_print("Error scrobbling track", "ERROR")
 
@@ -464,7 +464,7 @@ class SonosScrobbler:
             custom_print("\nShutting down...")  # Add newline before shutdown message
         except (
             soco_exceptions.SoCoException,
-            pylast.PylastError,
+            pylast.PyLastError,
             OSError,
             ValueError,
             KeyError,
